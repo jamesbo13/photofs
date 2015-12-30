@@ -15,6 +15,7 @@
 # this program. If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import traceback
 
 from xdg.BaseDirectory import xdg_data_dirs
 
@@ -124,6 +125,9 @@ class ShotwellSource(FileBasedImageSource):
 
                     # Finally add the image to this tag
                     tag.add(image)
+
+        except:
+            traceback.print_exc()
 
         finally:
             db.close()
