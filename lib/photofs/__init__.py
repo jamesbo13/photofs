@@ -44,33 +44,36 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
         selected image source.
     :type database: str or None
 
-    :param str photo_path: The directory in the mounted root to contain photos.
+    :param str tag_path: The directory in the mounted root to contain tags.
 
-    :param str video_path: The directory in the mounted root to contain videos.
+    :param str date_path: The directory in the mounted root to contain dates.
+
+    :param str event_path: The directory in the mounted root to contain events
 
     :param str date_format: The date format string used to construct file names
         from time stamps.
 
     :raises RuntimeError: if an error occurs
     """
+
+    _ROOT_DIR_DEFAULTS = {"tag_path" :   'Tags',
+                          "date_path" :  'Date',
+                          "event_path" : 'Event'}
+
     def __init__(self,
             mountpoint,
             source = list(ImageSource.SOURCES.keys())[0],
-            photo_path = 'Photos',
-            video_path = 'Videos',
-            date_format = '%Y-%m-%d, %H.%M',
+            date_format = '%Y-%m-%d_%H-%M-%S',
             **kwargs):
         super(PhotoFS, self).__init__()
 
         self.source = source
-        self.photo_path = photo_path
-        self.video_path = video_path
         Image.DATE_FORMAT = date_format
 
         self.creation = None
         self.dirstat = None
         self.image_source = None
-        self.resolvers = {}
+        self.root_dirs = []
 
         self.handles = {}
 
@@ -78,21 +81,15 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
         self.image_source = ImageSource.get(self.source)(**kwargs)
 
         try:
-            # Make sure the photo and video paths are strs
-            self.photo_path = str(self.photo_path)
-            self.video_path = str(self.video_path)
-
-            # Load the photo and video resolvers
-            self.resolvers = {
-                self.photo_path: self.ImageResolver(self,
-                    lambda i: not i.is_video
-                        if isinstance(i, Image)
-                        else not i.has_video),
-                self.video_path: self.ImageResolver(self,
-                    lambda i: i.is_video
-                        if isinstance(i, Image)
-                        else i.has_video),
-                "Events" : self.EventImageResolver(self, lambda i: True)}
+            # Make sure the root paths are strings or None
+            for key,default in self._ROOT_DIR_DEFAULTS.items():
+                val = kwargs.get(key, default)
+                if val is not None:
+                    val = str(val)
+                    setattr(self, key, val)
+                    self.root_dirs.append(val)
+                else:
+                    setattr(self, key, val)
 
             # Store the current time as timestamp for directories
             self.creation = int(time.time())
@@ -118,142 +115,75 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
         :returns: the tag or image
         :rtype: Tag or Image
         """
-        root, rest = self.split_path(path)
+        print "__get__item(): path='%s'" % (path)
 
-        if root == "Events":
-            rest = "_EVENTS_" + os.path.sep + rest
-
-        return self.image_source.locate(os.path.sep + rest)
+        return self.image_source.locate(path)
 
     def destroy(self, path):
         pass
 
-    class ImageResolver(object):
-        """This class resolves image requests.
+    def _getattr(self, path):
+        """Performs a stat on ``/root/path``.
+
+        :param str root: The first segment of the path, which contains the
+            string that caused this resolver to be picked by
+            :class:`PhotoFS`.
+
+        :param str path: The path to resolve. This has to begin with
+            :attr:`os.path.sep`.
+
+        :return: a :class:`os.stat_result` object for the path
+        :rtype: os.stat_result
+
+        :raises fuse.FuseOSError: if an error occurs
         """
-        def __init__(self, file_system, include_filter):
-            """Creates an image resolver for a specific source and filter.
+        try:
+            item = self.image_source.locate(path)
 
-            :param PhotoFS file_system: The photofs instance.
+            if isinstance(item, Image):
+                # This is a file
+                return item.stat
 
-            :param include_filter: The filter function to apply to images. This
-                function will only be passed instances of :class:`Image`.
-                :class:`Tag` instances which contain no unfiltered images or
-                subtags will automatically be filtered out.
-            """
-            def recursive_filter(item):
-                """The recursive filter used to actually filter the image
-                source.
+            elif isinstance(item, dict):
+                # This is a directory; this matches both Tag and ImageSource
+                return self.dirstat
 
-                This function will simply call include_filter in the outer scope
-                if item is an instance of :class:`Image`, otherwise it will
-                recursively call itself on all items in the tag, and return
-                whether the filtered tag contains any subitems.
+            else:
+                raise RuntimeError('Unknown object: %s', path)
 
-                :param item: The item to filter.
-                :type item: Image or Tag
+        except KeyError:
+            raise fuse.FuseOSError(errno.ENOENT)
 
-                :return: ``True`` if the item should be kept and ``False``
-                    otherwise
-                """
-                if isinstance(item, Image):
-                    return include_filter(item)
-                elif isinstance(item, Tag):
-                    return any(recursive_filter(item)
-                        for item in item.values())
-                else:
-                    return False
+    def _readdir(self, path):
+        """Performs a directory listing on ``/root/path``.
 
-            self.fs = file_system
-            self._include_filter = recursive_filter
+        :param str root: The first segment of the path, which contains the
+            string that caused this resolver to be picked by
+            :class:`PhotoFS`.
 
-        def getattr(self, root, path):
-            """Performs a stat on ``/root/path``.
+        :param str path: The path to resolve. This has to begin with
+            :attr:`os.path.sep`, and it must be resolved to a dictionary.
 
-            :param str root: The first segment of the path, which contains the
-                string that caused this resolver to be picked by
-                :class:`PhotoFS`.
+        :return: a sequence of strings describing the directory
+        :rtype: [str]
 
-            :param str path: The path to resolve. This has to begin with
-                :attr:`os.path.sep`.
+        :raises fuse.FuseOSError: if an error occurs
+        """
+        try:
+            item = self.image_source.locate(path)
 
-            :return: a :class:`os.stat_result` object for the path
-            :rtype: os.stat_result
+            if isinstance(item, dict):
+                # This is a directory; this matches both Tag and ImageSource
+                #return [k
+                #    for k, v in item.items()
+                #    if self._include_filter(v)]
+                return item.keys()
+            else:
+                raise RuntimeError('Unknown object: %s', path)
 
-            :raises fuse.FuseOSError: if an error occurs
-            """
-            try:
-                item = self.fs.image_source.locate(path)
+        except KeyError:
+            raise fuse.FuseOSError(errno.ENOENT)
 
-                if isinstance(item, Image):
-                    # This is a file
-                    return item.stat
-
-                elif isinstance(item, dict):
-                    # This is a directory; this matches both Tag and ImageSource
-                    return self.fs.dirstat
-
-                else:
-                    raise RuntimeError('Unknown object: %s',
-                        os.path.sep.join(root, path))
-
-            except KeyError:
-                raise fuse.FuseOSError(errno.ENOENT)
-
-        def readdir(self, root, path):
-            """Performs a directory listing on ``/root/path``.
-
-            :param str root: The first segment of the path, which contains the
-                string that caused this resolver to be picked by
-                :class:`PhotoFS`.
-
-            :param str path: The path to resolve. This has to begin with
-                :attr:`os.path.sep`, and it must be resolved to a dictionary.
-
-            :return: a sequence of strings describing the directory
-            :rtype: [str]
-
-            :raises fuse.FuseOSError: if an error occurs
-            """
-            try:
-                item = self.fs.image_source.locate(path)
-
-                if isinstance(item, dict):
-                    # This is a directory; this matches both Tag and ImageSource
-                    return [k
-                        for k, v in item.items()
-                        if self._include_filter(v)]
-
-                else:
-                    raise RuntimeError('Unknown object: %s',
-                        os.path.join(root, path))
-
-            except KeyError:
-                raise fuse.FuseOSError(errno.ENOENT)
-
-    class EventImageResolver(ImageResolver):
-
-        def getattr(self, root, path):
-            if root != "Events":
-                raise RuntimeError('Unexpected root: %s', root)
-
-            if path[0] == os.path.sep:
-                path = path[1:]
-
-            new_path = os.path.join(os.path.sep, "_EVENTS_", path).rstrip(os.path.sep)
-
-            return super(PhotoFS.EventImageResolver, self).getattr(root, new_path)
-
-        def readdir(self, root, path):
-            if root != "Events":
-                raise RuntimeError('Unexpected root: %s', root)
-
-            if path[0] == os.path.sep:
-                path = path[1:]
-
-            new_path = os.path.join(os.path.sep, "_EVENTS_", path).rstrip(os.path.sep)
-
-            return super(PhotoFS.EventImageResolver, self).readdir(root, new_path)
 
 
     def split_path(self, path):
@@ -285,12 +215,16 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
             if not rest:
                 # Unless path is the root, it must be in the resolvers; the root
                 # and any items directly below it are directories
-                if root and not root in self.resolvers:
+
+                # XXX: change self.resolvers to self.root_dirs
+                if root and not root in self.root_dirs:
                     raise fuse.FuseOSError(errno.ENOENT)
                 else:
                     st = self.dirstat
             else:
-                st = self.resolvers[root].getattr(root, os.path.sep + rest)
+                # XXX: Don't have separate resolvers, just lookup bits here
+                #      based on full path (ie. don't split root and rest)
+                st = self._getattr(path)
 
             return dict(
                 # Remove write permission bits
@@ -319,11 +253,9 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
             root, rest = self.split_path(path)
 
             if not root:
-                # The root contains the resolver names
-                items = [d
-                    for d in self.resolvers.keys()]
+                items = [d for d in self.root_dirs]
             else:
-                items = self.resolvers[root].readdir(root, os.path.sep + rest)
+                items = self._readdir(path)
 
             # We return tuples instead of strings since fusepy on Python 2.x
             # incorrectly treats unicode as non-string
@@ -337,6 +269,8 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
             raise fuse.FuseOSError(e.errno)
 
     def open(self, path, flags):
+        print "open(): path='%s', flags='%s'" % (path, flags)
+
         item = self[path]
         if isinstance(item, Image):
             handle = item.open(flags)

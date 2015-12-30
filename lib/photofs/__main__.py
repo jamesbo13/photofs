@@ -26,11 +26,14 @@ def main():
         help = 'Run the daemon in the foreground.',
         action = 'store_true')
 
-    parser.add_argument('--photo-path',
-        help = 'The name of the top level directory that contains photos.')
+    parser.add_argument('--tag-path',
+        help = 'The name of the top level directory that contains tags.')
 
-    parser.add_argument('--video-path',
-        help = 'The name of the top level directory that contains videos.')
+    parser.add_argument('--event-path',
+        help = 'The name of the top level directory that contains events.')
+
+    parser.add_argument('--date-path',
+        help = 'The name of the top level directory that contains dates.')
 
     parser.add_argument('--date-format',
         help = 'The format to use for timestamps.')

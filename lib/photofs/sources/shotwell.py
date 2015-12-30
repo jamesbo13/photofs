@@ -15,12 +15,12 @@
 # this program. If not, see <http://www.gnu.org/licenses/>.
 
 import os
-import traceback
 
 from xdg.BaseDirectory import xdg_data_dirs
 
 from .. import *
 
+import traceback
 
 # Try to import sqlite
 try:
@@ -29,6 +29,8 @@ except ImportError:
     sqlite = None
 
 
+# XXX: This needs to get names from args for different root directories or
+#      we simply hardcode them ... but they still need to be known
 @ImageSource.register('shotwell')
 class ShotwellSource(FileBasedImageSource):
     """Loads images and videos from Shotwell.
@@ -36,6 +38,13 @@ class ShotwellSource(FileBasedImageSource):
     def __init__(self, *args, **kwargs):
         if sqlite3 is None:
             raise RuntimeError('This program requires sqlite3')
+
+        for key in ["tag_path", "date_path", "event_path"]:
+            val = kwargs.get(key, None)
+            setattr(self, key, val)
+            if key in kwargs:
+                del kwargs[key]
+
         super(ShotwellSource, self).__init__(*args, **kwargs)
 
     @property
@@ -67,14 +76,15 @@ class ShotwellSource(FileBasedImageSource):
             # Load events
             event_tags = {}
 
-            print " - Loading events."
-            results = db.execute("""
-                SELECT id,name FROM EventTable
-                WHERE name != "" and name is not NULL""")
-            #results = []
-            for r_id, r_name in results:
-                print "     Adding event '{}' (id={})".format(r_name, r_id)
-                event_tags[r_id] = self._make_tags("/_EVENTS_/{}".format(r_name))
+            if self.event_path is not None:
+                print " - Loading events."
+                results = db.execute("""
+                    SELECT id,name FROM EventTable
+                    WHERE name != "" and name is not NULL""")
+                #results = []
+                for r_id, r_name in results:
+                    print "     Adding event '{}' (id={})".format(r_name, r_id)
+                    event_tags[r_id] = self._make_tags(os.path.join(os.path.sep, self.event_path, r_name))
 
             # Load the images
             print " - Loading images."
@@ -90,61 +100,70 @@ class ShotwellSource(FileBasedImageSource):
                         is_video)
                     if r_event in event_tags:
                         event_tags[r_event].add(images[r_id])
+                    if self.date_path:
+                        date = time.strftime("%Y/%m/%d", images[r_id].timestamp.timetuple())
+                        tag = self._make_tags(os.path.join(os.path.sep, self.date_path, date))
+                        tag.add(images[r_id])
 
-            # Load the tags
-            print " - Loading tags."
+            if self.tag_path is not None:
+                # Load the tags
+                print " - Loading tags."
 
-            results = db.execute("""
-                SELECT name, photo_id_list
-                    FROM tagtable
-                    ORDER BY name""")
-            for r_name, r_photo_id_list in results:
-                # Ignore unused tags
-                if not r_photo_id_list:
-                    continue
-
-                # Hierachial tag names start with '/'
-                path = r_name.split('/') if r_name[0] == '/' else ['', r_name]
-                path_name = os.path.sep.join(path)
-
-                # Make sure that the tag and all its parents exist
-                tag = self._make_tags(path_name)
-
-                # The IDs are all in the text of photo_id_list, separated by
-                # commas; there is an extra comma at the end
-                ids = r_photo_id_list.split(',')[:-1]
-
-                # Iterate over all image IDs and move them to this tag
-                for i in ids:
-                    if i[0].isdigit():
-                        # If the first character is a digit, this is a legacy
-                        # source ID and an ID in the photo table
-                        image = db_tables['phototable'][1].get(int(i))
-                    else:
-                        # Iterate over all database tables and locate the image
-                        # instance for the current ID
-                        image = None
-                        for table_name, (header, images, is_video) \
-                                in db_tables.items():
-                            if not i.startswith(header):
-                                continue
-                            image = images.get(int(i[len(header):], 16))
-                            break
-
-                    # Verify that the tag only references existing images
-                    if image is None:
+                results = db.execute("""
+                    SELECT name, photo_id_list
+                        FROM tagtable
+                        ORDER BY name""")
+                for r_name, r_photo_id_list in results:
+                    # Ignore unused tags
+                    if not r_photo_id_list:
                         continue
 
-                    # Remove the image from the parent tags
-                    parent = tag.parent
-                    while parent:
-                        for k, v in parent.items():
-                            if v == image:
-                                del parent[k]
-                        parent = parent.parent
+                    # Hierachial tag names start with '/' but normal tags do not
+                    # Ensure path does NOT start with '/'
+                    if r_name[0] == '/':
+                        path = r_name[1:]
+                    else:
+                        path = r_name
 
-                    # Finally add the image to this tag
-                    tag.add(image)
+                    # Make sure that the tag and all its parents exist
+                    # XXX: What if we did /Tags/path_name ??
+                    tag = self._make_tags(os.path.join(os.path.sep, self.tag_path, path))
+
+                    # The IDs are all in the text of photo_id_list, separated by
+                    # commas; there is an extra comma at the end
+                    ids = r_photo_id_list.split(',')[:-1]
+
+                    # Iterate over all image IDs and move them to this tag
+                    for i in ids:
+                        if i[0].isdigit():
+                            # If the first character is a digit, this is a legacy
+                            # source ID and an ID in the photo table
+                            image = db_tables['phototable'][1].get(int(i))
+                        else:
+                            # Iterate over all database tables and locate the image
+                            # instance for the current ID
+                            image = None
+                            for table_name, (header, images, is_video) \
+                                    in db_tables.items():
+                                if not i.startswith(header):
+                                    continue
+                                image = images.get(int(i[len(header):], 16))
+                                break
+
+                        # Verify that the tag only references existing images
+                        if image is None:
+                            continue
+
+                        # Remove the image from the parent tags
+                        parent = tag.parent
+                        while parent is not None:
+                            for k, v in parent.items():
+                                if v == image:
+                                    del parent[k]
+                            parent = parent.parent
+
+                        # Finally add the image to this tag
+                        tag.add(image)
 
         except:
             traceback.print_exc()
