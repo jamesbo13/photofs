@@ -91,7 +91,8 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
                 self.video_path: self.ImageResolver(self,
                     lambda i: i.is_video
                         if isinstance(i, Image)
-                        else i.has_video)}
+                        else i.has_video),
+                "Events" : self.EventImageResolver(self, lambda i: True)}
 
             # Store the current time as timestamp for directories
             self.creation = int(time.time())
@@ -118,6 +119,10 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
         :rtype: Tag or Image
         """
         root, rest = self.split_path(path)
+
+        if root == "Events":
+            rest = "_EVENTS_" + os.path.sep + rest
+
         return self.image_source.locate(os.path.sep + rest)
 
     def destroy(self, path):
@@ -225,6 +230,31 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
 
             except KeyError:
                 raise fuse.FuseOSError(errno.ENOENT)
+
+    class EventImageResolver(ImageResolver):
+
+        def getattr(self, root, path):
+            if root != "Events":
+                raise RuntimeError('Unexpected root: %s', root)
+
+            if path[0] == os.path.sep:
+                path = path[1:]
+
+            new_path = os.path.join(os.path.sep, "_EVENTS_", path).rstrip(os.path.sep)
+
+            return super(PhotoFS.EventImageResolver, self).getattr(root, new_path)
+
+        def readdir(self, root, path):
+            if root != "Events":
+                raise RuntimeError('Unexpected root: %s', root)
+
+            if path[0] == os.path.sep:
+                path = path[1:]
+
+            new_path = os.path.join(os.path.sep, "_EVENTS_", path).rstrip(os.path.sep)
+
+            return super(PhotoFS.EventImageResolver, self).readdir(root, new_path)
+
 
     def split_path(self, path):
         """Returns the tuple ``(root, rest)`` for a path, where ``root`` is the

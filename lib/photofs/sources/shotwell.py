@@ -52,6 +52,9 @@ class ShotwellSource(FileBasedImageSource):
                 return result
 
     def load_tags(self):
+
+        print "Running load_tags()."
+
         db = sqlite3.connect(self._path)
         try:
             # The descriptions of the different image tables; the value tuple is
@@ -61,19 +64,36 @@ class ShotwellSource(FileBasedImageSource):
                 'phototable': ('thumb', {}, False),
                 'videotable': ('video-', {}, True)}
 
+            # Load events
+            event_tags = {}
+
+            print " - Loading events."
+            results = db.execute("""
+                SELECT id,name FROM EventTable
+                WHERE name != "" and name is not NULL""")
+            #results = []
+            for r_id, r_name in results:
+                print "     Adding event '{}' (id={})".format(r_name, r_id)
+                event_tags[r_id] = self._make_tags("/_EVENTS_/{}".format(r_name))
+
             # Load the images
+            print " - Loading images."
             for table_name, (header, images, is_video) in db_tables.items():
                 results = db.execute("""
-                    SELECT id, filename, exposure_time, title
+                    SELECT id, filename, exposure_time, title, event_id
                         FROM %s""" % table_name)
-                for r_id, r_filename, r_exposure_time, r_title in results:
+                for r_id, r_filename, r_exposure_time, r_title, r_event in results:
                     images[r_id] = FileBasedImage(
                         r_title,
                         r_filename,
                         r_exposure_time,
                         is_video)
+                    if r_event in event_tags:
+                        event_tags[r_event].add(images[r_id])
 
             # Load the tags
+            print " - Loading tags."
+
             results = db.execute("""
                 SELECT name, photo_id_list
                     FROM tagtable
@@ -130,4 +150,5 @@ class ShotwellSource(FileBasedImageSource):
             traceback.print_exc()
 
         finally:
+            print "Done"
             db.close()

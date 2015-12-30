@@ -70,7 +70,7 @@ class Tag(dict):
         self._parent = parent
 
         # Make sure to add ourselves to the parent tag if specified
-        if parent:
+        if parent is not None:
             parent.add(self)
 
         self._has_video = False
@@ -129,8 +129,12 @@ class Tag(dict):
             if isinstance(previous, Image):
                 self.add(previous)
 
-            self._has_image = self._has_image or item.has_video
-            self._has_video = self._has_image or item.has_image
+            # When processing events sometimes this fails, so just ignore
+            try:
+                self._has_image = self._has_image or item.has_video
+                self._has_video = self._has_image or item.has_image
+            except AttributeError:
+                pass
 
         else:
             raise ValueError('Cannot add %s to a Tag',
