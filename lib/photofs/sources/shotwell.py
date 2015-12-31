@@ -29,8 +29,6 @@ except ImportError:
     sqlite = None
 
 
-# XXX: This needs to get names from args for different root directories or
-#      we simply hardcode them ... but they still need to be known
 @ImageSource.register('shotwell')
 class ShotwellSource(FileBasedImageSource):
     """Loads images and videos from Shotwell.
@@ -62,8 +60,6 @@ class ShotwellSource(FileBasedImageSource):
 
     def load_tags(self):
 
-        print "Running load_tags()."
-
         db = sqlite3.connect(self._path)
         try:
             # The descriptions of the different image tables; the value tuple is
@@ -77,17 +73,14 @@ class ShotwellSource(FileBasedImageSource):
             event_tags = {}
 
             if self.event_path is not None:
-                print " - Loading events."
                 results = db.execute("""
                     SELECT id,name FROM EventTable
                     WHERE name != "" and name is not NULL""")
                 #results = []
                 for r_id, r_name in results:
-                    print "     Adding event '{}' (id={})".format(r_name, r_id)
                     event_tags[r_id] = self._make_tags(os.path.join(os.path.sep, self.event_path, r_name))
 
             # Load the images
-            print " - Loading images."
             for table_name, (header, images, is_video) in db_tables.items():
                 results = db.execute("""
                     SELECT id, filename, exposure_time, title, event_id
@@ -107,7 +100,6 @@ class ShotwellSource(FileBasedImageSource):
 
             if self.tag_path is not None:
                 # Load the tags
-                print " - Loading tags."
 
                 results = db.execute("""
                     SELECT name, photo_id_list
@@ -126,7 +118,6 @@ class ShotwellSource(FileBasedImageSource):
                         path = r_name
 
                     # Make sure that the tag and all its parents exist
-                    # XXX: What if we did /Tags/path_name ??
                     tag = self._make_tags(os.path.join(os.path.sep, self.tag_path, path))
 
                     # The IDs are all in the text of photo_id_list, separated by
@@ -169,5 +160,4 @@ class ShotwellSource(FileBasedImageSource):
             traceback.print_exc()
 
         finally:
-            print "Done"
             db.close()

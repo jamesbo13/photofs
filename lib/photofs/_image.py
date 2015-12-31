@@ -26,7 +26,7 @@ class Image(object):
     """
 
     #: The date format used to construct the title when none is set
-    DATE_FORMAT = '%Y-%m-%d, %H.%M'
+    DATE_FORMAT = '%Y%m%d-%H%M%s'
 
     def __init__(self, title, extension, timestamp, st, is_video = None):
         """Initialises an image.
@@ -69,8 +69,13 @@ class Image(object):
     def title(self):
         """The title of this image. Use this to generate the file name if it is
         set."""
-        return self._title or time.strftime(self.DATE_FORMAT,
-            self.timestamp.timetuple())
+        if self._title:
+            return self._title
+
+        if self.is_video:
+            return "VID_%s" %time.strftime(self.DATE_FORMAT, self.timestamp.timetuple())
+        else:
+            return "IMG_%s" %time.strftime(self.DATE_FORMAT, self.timestamp.timetuple())
 
     @property
     def extension(self):

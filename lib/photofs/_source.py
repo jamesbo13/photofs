@@ -105,7 +105,7 @@ class ImageSource(dict):
         :return: a unique key
         :rtype: str
         """
-        return make_unique(directory, base_name, '%s%s', '%s (%d)%s', ext)
+        return make_unique(directory, base_name, '%s%s', '%s-%02d%s', ext)
 
     def _make_tags(self, path):
         """Makes sure that all tags up until the last element of ``path`` exist.

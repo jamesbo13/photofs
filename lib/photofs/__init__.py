@@ -61,7 +61,7 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
     def __init__(self,
             mountpoint,
             source = list(ImageSource.SOURCES.keys())[0],
-            date_format = '%Y-%m-%d_%H-%M-%S',
+            date_format = '%Y%m%d-%H%M%S',
             **kwargs):
         super(PhotoFS, self).__init__()
 
@@ -106,26 +106,18 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
     def __getitem__(self, path):
         """Reads the item at ``path``.
 
-        The root component of the path is discarded.
-
         :param str path: The path for which to find the item.
 
         :returns: the tag or image
         :rtype: Tag or Image
         """
-        print "__get__item(): path='%s'" % (path)
-
         return self.image_source.locate(path)
 
     def destroy(self, path):
         pass
 
     def _getattr(self, path):
-        """Performs a stat on ``/root/path``.
-
-        :param str root: The first segment of the path, which contains the
-            string that caused this resolver to be picked by
-            :class:`PhotoFS`.
+        """Performs a stat on ``/path``.
 
         :param str path: The path to resolve. This has to begin with
             :attr:`os.path.sep`.
@@ -153,11 +145,7 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
             raise fuse.FuseOSError(errno.ENOENT)
 
     def _readdir(self, path):
-        """Performs a directory listing on ``/root/path``.
-
-        :param str root: The first segment of the path, which contains the
-            string that caused this resolver to be picked by
-            :class:`PhotoFS`.
+        """Performs a directory listing on ``/path``.
 
         :param str path: The path to resolve. This has to begin with
             :attr:`os.path.sep`, and it must be resolved to a dictionary.
@@ -211,17 +199,13 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
             root, rest = self.split_path(path)
 
             if not rest:
-                # Unless path is the root, it must be in the resolvers; the root
-                # and any items directly below it are directories
-
-                # XXX: change self.resolvers to self.root_dirs
+                # If only root, then it must be one of the root_dirs
+                # otherwise error
                 if root and not root in self.root_dirs:
                     raise fuse.FuseOSError(errno.ENOENT)
                 else:
                     st = self.dirstat
             else:
-                # XXX: Don't have separate resolvers, just lookup bits here
-                #      based on full path (ie. don't split root and rest)
                 st = self._getattr(path)
 
             return dict(
@@ -267,7 +251,6 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
             raise fuse.FuseOSError(e.errno)
 
     def open(self, path, flags):
-        print "open(): path='%s', flags='%s'" % (path, flags)
 
         item = self[path]
         if isinstance(item, Image):
