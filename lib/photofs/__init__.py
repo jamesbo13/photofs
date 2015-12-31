@@ -56,9 +56,7 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
     :raises RuntimeError: if an error occurs
     """
 
-    _ROOT_DIR_DEFAULTS = {"tag_path" :   'Tags',
-                          "date_path" :  'Date',
-                          "event_path" : 'Event'}
+    _ROOT_DIR_ARGS = ["tag_path", "date_path", "event_path"]
 
     def __init__(self,
             mountpoint,
@@ -82,8 +80,8 @@ class PhotoFS(fuse.LoggingMixIn, fuse.Operations):
 
         try:
             # Make sure the root paths are strings or None
-            for key,default in self._ROOT_DIR_DEFAULTS.items():
-                val = kwargs.get(key, default)
+            for key in self._ROOT_DIR_ARGS:
+                val = kwargs.get(key, None)
                 if val is not None:
                     val = str(val)
                     setattr(self, key, val)

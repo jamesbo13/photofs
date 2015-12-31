@@ -6,6 +6,11 @@ from photofs import *
 def main():
     import argparse
 
+    default_root_paths = {"tag-path" :   ("Tags", "Name of directory of images sorted by tags."),
+                          "event-path" : ("Events", "Name of directory of images sorted by events."),
+                          "date-path" :  ("Date", "Name of directory of images sorted by time taken."),
+                          }
+
     parser = argparse.ArgumentParser(
         prog = 'photofs',
         add_help = True,
@@ -26,14 +31,13 @@ def main():
         help = 'Run the daemon in the foreground.',
         action = 'store_true')
 
-    parser.add_argument('--tag-path',
-        help = 'The name of the top level directory that contains tags.')
-
-    parser.add_argument('--event-path',
-        help = 'The name of the top level directory that contains events.')
-
-    parser.add_argument('--date-path',
-        help = 'The name of the top level directory that contains dates.')
+    # Add a --*-path and --no-* option for each supported root path
+    for path, values in default_root_paths.items():
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument("--%s" % path, default = values[0], help = values[1])
+        group.add_argument("--no-%s" % path.split('-',1)[0], dest = path,
+                           action = 'store_const', const = None,
+                           help = "Disable %s." % path)
 
     parser.add_argument('--date-format',
         help = 'The format to use for timestamps.')
