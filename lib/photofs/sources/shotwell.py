@@ -21,6 +21,7 @@ from xdg.BaseDirectory import xdg_data_dirs
 from .. import *
 
 import traceback
+import datetime
 
 # Try to import sqlite
 try:
@@ -37,6 +38,7 @@ class ShotwellSource(FileBasedImageSource):
         if sqlite3 is None:
             raise RuntimeError('This program requires sqlite3')
 
+        # We use path names in generating tags for each type
         for key in ["tag_path", "date_path", "event_path"]:
             val = kwargs.get(key, None)
             setattr(self, key, val)
@@ -72,13 +74,20 @@ class ShotwellSource(FileBasedImageSource):
             # Load events
             event_tags = {}
 
+            # We should have events segregated by year (or even year & month)
+            # Need to infer date from exposure_time of primary_source_id
             if self.event_path is not None:
                 results = db.execute("""
-                    SELECT id,name FROM EventTable
-                    WHERE name != "" and name is not NULL""")
-                #results = []
-                for r_id, r_name in results:
-                    event_tags[r_id] = self._make_tags(os.path.join(os.path.sep, self.event_path, r_name))
+                    SELECT e.id,e.name,min(p.exposure_time) FROM EventTable as e
+                    JOIN PhotoTable as p ON p.event_id == e.id
+                    GROUP BY p.event_id""")
+                for r_id, r_name, r_time in results:
+                    if r_name is None:
+                        r_name = "Event-%04d" % (r_id)
+
+                    year = datetime.datetime.fromtimestamp(r_time).year
+                    name = "{}/{}".format(year, r_name)
+                    event_tags[r_id] = self._make_tags(os.path.join(os.path.sep, self.event_path, name))
 
             # Load the images
             for table_name, (header, images, is_video) in db_tables.items():
@@ -94,7 +103,7 @@ class ShotwellSource(FileBasedImageSource):
                     if r_event in event_tags:
                         event_tags[r_event].add(images[r_id])
                     if self.date_path:
-                        date = time.strftime("%Y/%m/%d", images[r_id].timestamp.timetuple())
+                        date = time.strftime("%Y/%m-%d", images[r_id].timestamp.timetuple())
                         tag = self._make_tags(os.path.join(os.path.sep, self.date_path, date))
                         tag.add(images[r_id])
 
