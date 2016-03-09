@@ -14,10 +14,10 @@ sys.path.append(LIB_DIR)
 
 # Information published on PyPi
 PACKAGE_NAME = 'photofs'
-VERSION = '1.2.1'
+VERSION = '1.2.1-jab1'
 DESCRIPTION = 'Explore tagged photos from Shotwell in the filesystem using FUSE'
-AUTHOR = 'Moses Palmér'
-PACKAGE_URL = 'https://github.com/moses-palmer/photofs'
+AUTHOR = 'Moses Palmér, James Bowen'
+PACKAGE_URL = 'https://github.com/jamesbo13/photofs'
 with open(os.path.join(
         os.path.dirname(__file__),
         'README.rst')) as f:
@@ -29,7 +29,7 @@ with open(os.path.join(
 
 
 # The author email
-AUTHOR_EMAIL = 'moses.palmer@gmail.com'
+AUTHOR_EMAIL = 'jamesbo13@gmail.com'
 
 
 def setup(**kwargs):
